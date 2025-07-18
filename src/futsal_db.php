@@ -1,7 +1,12 @@
 <?php
-$servername = "localhost";
+/*$servername = "localhost";
 $username = "root";
 $password = "";
+$dbname = "gpedfqte_WP3RP";*/
+
+$servername = "yamabiko.proxy.rlwy.net:13665";
+$username = "root";
+$password = "elJbKEDUyyGYKVVHqkrcKZNNynrFtGHw";
 $dbname = "gpedfqte_WP3RP";
 
 // Create Database Connection
