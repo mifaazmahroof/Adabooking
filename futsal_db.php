@@ -1,7 +1,12 @@
 <?php
-$servername = "localhost";
+/*$servername = "localhost";
 $username = "root";
 $password = "";
+$dbname = "gpedfqte_WP3RP";*/
+
+$servername = "yamabiko.proxy.rlwy.net:13665";
+$username = "root";
+$password = "elJbKEDUyyGYKVVHqkrcKZNNynrFtGHw";
 $dbname = "gpedfqte_WP3RP";
 
 // Create Database Connection
@@ -42,6 +47,9 @@ switch ($action) {
     case 'cancelBooking':
         cancelBooking($_POST, $conn);
         break;
+    case 'upload_images':
+        upload_images($_POST);
+        break;
     case 'login':
         login($_POST, $conn);
         break;
@@ -50,6 +58,12 @@ switch ($action) {
         break;
     case 'create_pitch':
         create_pitch($_POST, $conn);
+        break;
+    case 'stadium_dp':
+        stadium_dp($_POST, $conn);
+        break;
+    case 'delete_image':
+        delete_image($_POST, $conn);
         break;
     case 'update_pitch':
         update_pitch($_POST, $conn);
@@ -123,10 +137,185 @@ switch ($action) {
 
 // Retrieve Available Locations
 
+
+
+/* function getImagesOfPitch($id){
+global $conn;
+
+
+$sql ="select p.* from pitch as p join court as c ON c.court_id = p.court_id join stadium as s on s.stadium_id = c.stadium_id where s.stadium_id ='$id';";
+
+ $result = mysqli_query($conn, $sql);
+
+    if (!$result) {
+        die("Query failed: " . mysqli_error($conn));
+    }
+
+    $data = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $data[$row['pitch_id']]['pitch_name'] = $row['pitch_name'];
+$data[$row['pitch_id']]['images'][] = $row['image_url'];
+        //$data[] = $row;
+    }
+
+    
+
+    return  $data;
+
+
+}
+ */
+
+function stadium_dp($data,$conn){
+    $upload_folder = __DIR__  . '/uploads/';
+    $upload_url_base = 'uploads/';
+    $id = $data['stadium_id'];
+    $image_path = null;
+    // Handle image if uploaded
+    if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
+  // Ensure upload folder exists
+  if (!file_exists($upload_folder)) {
+    mkdir($upload_folder, 0755, true);
+}
+        $tmp_name = $_FILES['profile_picture']['tmp_name'];
+        $original_name = basename($_FILES['profile_picture']['name']);
+        $file_type = mime_content_type($tmp_name);
+
+        if (strpos($file_type, 'image') === 0) {
+            $unique_name = time() . '_' . $original_name;
+            $server_path = $upload_folder . $unique_name;
+            $public_url = $upload_url_base . $unique_name;
+
+            if (move_uploaded_file($tmp_name, $server_path)) {
+                $image_path = $public_url;
+                $sql = "UPDATE stadium 
+                SET image_path=? 
+                WHERE stadium_id=?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("si", $image_path,$id);
+            } else {
+                echo json_encode(["success" => false,"message" => "Failed to upload image."]);
+                
+                return;
+            }
+        } else {
+            echo json_encode(["success" => false,"message" => "Error updating details: Only image files are allowed."]);
+            
+            return;
+        }
+        if ($stmt->execute()) {
+            echo json_encode(["success" => true,"message" => "Image uploaded successfully.","image_url"=>$public_url]);
+            
+    } else {
+        echo json_encode(["success" => false,"message" => "Error updating details: " . $stmt->error]);
+            
+    }
+
+    $stmt->close();
+    }
+
+}
+
+function delete_image($data,$conn){
+    $image_id = $data['image_id'];
+    $query = "SELECT image_url FROM pitch_images WHERE image_id = $image_id LIMIT 1";
+    $result = mysqli_query($conn, $query);
+   if (!$result) {
+        die("Query failed: " . mysqli_error($conn));
+    }
+    if ($row = mysqli_fetch_assoc($result)) {
+        $imagePath = $row['image_url'];
+
+        // Delete file from server
+        /* if (file_exists($imagePath)) {
+            unlink($imagePath);
+        } */
+
+        // Delete record from DB
+        $deleteQuery = "DELETE FROM pitch_images WHERE image_id = $image_id";
+        mysqli_query($conn, $deleteQuery);
+
+        echo "success";
+    } else {
+        echo "Image not found";
+    }
+} 
+
+
+function getImagesOfPitch($stadiumId) {
+    global $conn;
+
+    $stadiumId = mysqli_real_escape_string($conn, $stadiumId); // basic SQL injection protection
+
+    $sql = "
+        SELECT 
+            p.pitch_id,
+            p.pitch_name,
+            pi.image_url,
+            pi.image_id
+        FROM pitch AS p
+        JOIN court AS c ON c.court_id = p.court_id
+        JOIN stadium AS s ON s.stadium_id = c.stadium_id
+        LEFT JOIN pitch_images AS pi ON pi.pitch_id = p.pitch_id
+        WHERE s.stadium_id = '$stadiumId';
+    ";
+
+    $result = mysqli_query($conn, $sql);
+
+    if (!$result) {
+        die("Query failed: " . mysqli_error($conn));
+    }
+
+    $data = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $pitchId = $row['pitch_id'];
+
+        // Store pitch name once
+        if (!isset($data[$pitchId])) {
+                        
+            $data[$pitchId] = [
+                'pitch_id' =>  $row['pitch_id'],
+                'pitch_name' => $row['pitch_name'],
+                'images' => []
+            ];
+        }
+
+        // Append image if available
+        if (!empty($row['image_url'])) {
+            $data[$pitchId]['images'][] = [
+                'url' => $row['image_url'],
+                'id' => $row['image_id']]
+            ;
+        }
+    }
+
+    return $data;
+}
+
+
+function getReviews(){
+    global $conn;
+
+    $sql = "SELECT r.rating, r.comment, r.review_date, r.pitch_id, p.pitch_name, s.name, c.cus_id, c.full_name, c.image_path FROM reviews AS r JOIN pitch AS p ON r.pitch_id = p.pitch_id JOIN stadium AS s ON s.stadium_id = p.stadium_id left join customer as c on c.cus_id = r.user_id ORDER BY r.rating DESC LIMIT 5";
+    $result = mysqli_query($conn, $sql);
+
+    if (!$result) {
+        die("Query failed: " . mysqli_error($conn));
+    }
+
+    $data = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $data[] = $row;
+    }
+
+    
+
+    return  $data;
+}
 function getAllCourtDetails() {
     global $conn;
     $sql = "SELECT 
-pitch.pitch_id as id, pitch.image_path as pitch_image, stadium.name as Stadium_name,stadium.address as Stadium_address,stadium.contact_info as Stadium_no,stadium.image_path as Stadium_image, court.court_type as Sport_type, pitch.pitch_name as Court_Name,pitch.opening_time as Opening_Time, pitch.closing_time as Closing_time, pricing.peak_rate as Peak_rate, pricing.offpeak_rate as Offpeak_rate, pricing.offpeak_start_time as offpeak_start, pricing.offpeak_end_time as Offpeak_end, pitch.tag as tagline,
+pitch.pitch_id as id, pitch.image_path as pitch_image, stadium.name as Stadium_name,stadium.address as Stadium_address,stadium.contact_info as Stadium_no,stadium.image_path as Stadium_image, court.court_type as Sport_type, pitch.pitch_name as Court_Name,pitch.opening_time as Opening_Time, pitch.closing_time as Closing_time, pricing.peak_rate as Peak_rate, pricing.offpeak_rate as Offpeak_rate, pricing.offpeak_start_time as offpeak_start, pricing.offpeak_end_time as Offpeak_end, pitch.Amenities as tagline,
 ROUND(AVG(r.rating), 1) AS average_rating,
     COUNT(r.review_id) AS review_count
 FROM stadium 
@@ -180,47 +369,6 @@ function getCities($conn, $query) {
 
 
 
-
-
-
-
-
-/* function getThisPitchDetails($pitch_id){
-    global $conn;
-$sql = "SELECT p.*,s.*,c.*,pr.*,pi.*
-FROM pitch as p 
-JOIN court as c oN p.court_id = c.court_id
-JOIN stadium as s ON c.stadium_id = s.stadium_id
-Join pricing as pr ON p.pitch_id = pr.pitch_id
-Join pitch_images as pi ON p.pitch_id = pi.pitch_id
- where p.pitch_id = '$pitch_id'";
-    $result = $conn->query($sql);
-    $data = [];
-
-    // Check if the query was successful
-    if ($result === false) {
-        // Query failed, log the error
-        die("Query failed: " . $conn->error);
-    }
-     $data = $result->fetch_assoc();
-    if (!$data) {
-        return null; // Pitch not found
-    }
-	$imagesql = "SELECT * FROM pitch_images WHERE pitch_id = '$pitch_id'";
-    $images = [];
-    $result_img = $conn->query($imagesql);
- if ($result_img === false) {
-        // Query failed, log the error
-        die("Query failed: " . $conn->error);
-    }
-    while ($row = $result_img->fetch_assoc()) {
-        $images = $row;
-    }
-$data['Images'] = $images;
-print_r($data);
-    return $data;
-	
-} */
 function getThisPitchDetails($pitch_id) {
     global $conn;
 
@@ -470,11 +618,11 @@ function getphone($conn, $phone) {
 function getReviewDetails($id) {
     global $conn;
 
-    $sql = "SELECT p.pitch_name, r.rating, r.comment, r.review_date, cu.full_name, cu.image_path 
+    $sql = "SELECT p.pitch_name, r.rating, r.comment, r.review_date, cu.full_name, cu.image_path,cu.cus_id 
             FROM stadium AS s 
             JOIN court AS c ON c.stadium_id = s.stadium_id 
             JOIN pitch AS p ON p.court_id = c.court_id 
-            LEFT JOIN reviews AS r ON r.pitch_id = p.pitch_id 
+            inner JOIN reviews AS r ON r.pitch_id = p.pitch_id 
             LEFT JOIN customer AS cu ON r.user_id = cu.cus_id 
             WHERE s.stadium_id = ?";
 
@@ -1055,7 +1203,7 @@ if ($check_result->num_rows > 0) {
     $stmt = $conn->prepare($query);
 
     if ($stmt) {
-        $stmt->bind_param("s", $gameType,stadiumId);
+        $stmt->bind_param("s", $gameType,$stadiumId);
 
         if ($stmt->execute()) {
             echo json_encode(["status" => "Success", "message" => "New Game is added successfully"]);
@@ -1323,9 +1471,61 @@ else{
 
 } */
 
+
+
+
+function upload_images($data){
+    $id = $data['pitch_id'];
+
+foreach ($_FILES['image']['tmp_name'] as $key => $tmp_name) {
+        $imageName = $_FILES['image']['name'][$key];
+        $imageTmp = $_FILES['image']['tmp_name'][$key];
+        $imageSize = $_FILES['image']['size'][$key];
+        $imageType = $_FILES['image']['type'][$key];
+
+        // Optional: Validate file type (e.g., allow only jpg, png)
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+        if (!in_array($imageType, $allowedTypes)) {
+            echo "Unsupported file type: $imageType";
+            continue;
+        }
+
+        // Optional: Check file size (e.g., max 5MB)
+        if ($imageSize > 5 * 1024 * 1024) {
+            echo "File too large: $imageName";
+            continue;
+        }
+
+        // Move file to upload folder
+        $uploadDir = 'uploads/pitch_images/';
+        if (!file_exists($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+
+        $newFileName = uniqid('img_') . '_' . basename($imageName);
+        $destination = $uploadDir . $newFileName;
+
+        if (move_uploaded_file($imageTmp, $destination)) {
+            // Insert into DB
+            savePitchImage($id, $destination);
+        } else {
+            echo "Upload failed: $imageName";
+        }
+    }
+
+}
+
+function savePitchImage($pitchId, $imagePath) {
+    global $conn;
+    $imagePath = mysqli_real_escape_string($conn, $imagePath);
+
+    $sql = "INSERT INTO pitch_images (pitch_id, image_url) VALUES ('$pitchId', '$imagePath')";
+    mysqli_query($conn, $sql);
+}
+
 function update_user($formData, $conn) {
-    $upload_folder = get_template_directory() . '/uploads/';
-    $upload_url_base = get_template_directory_uri() . '/uploads/';
+    $upload_folder = __DIR__ . 'uploads/';
+    $upload_url_base = 'uploads/';
 
     // Sanitize user input
     $fullname = $formData['fullname'];
@@ -1391,8 +1591,8 @@ function update_user($formData, $conn) {
 
 
 function update_client($formData,$conn) {
-    $upload_folder = get_template_directory() . '/uploads/';
-    $upload_url_base = get_template_directory_uri() . '/uploads/';
+    $upload_folder = __DIR__. 'uploads/';
+    $upload_url_base = 'uploads/';
     
     $fullname = $formData['fullname'];
     $address = $formData['address'];
@@ -1463,9 +1663,15 @@ function update_client($formData,$conn) {
 function getClientName($cus_id){
     global $conn;
     $query = $conn->prepare("
-    SELECT *
-    FROM stadium
-    WHERE stadium_id = ?
+    SELECT 
+    s.*,
+    ROUND(AVG(r.rating), 1) AS average_rating,
+    COUNT(r.review_id) AS review_count
+FROM stadium AS s
+JOIN pitch AS p ON p.stadium_id = s.stadium_id
+JOIN reviews AS r ON r.pitch_id = p.pitch_id
+WHERE s.stadium_id = ?
+GROUP BY s.stadium_id, s.name;
 ");
 
 if ($query === false) {
@@ -1845,9 +2051,11 @@ $result = mysqli_query($conn, $sql);
 
 }
 
+
+
 function create_pitch($data,$conn) {
-    $upload_folder = __DIR__  . '/Asset/uploads/';
-    $upload_url_base = '/Asset/uploads/';
+    $upload_folder = __DIR__  . 'uploads/';
+    $upload_url_base = 'uploads/';
     $pitch_name     = $data['pitch_name'];
     $opening_time   = $data['opening_time'];
     $closing_time   = $data['closing_time'];
@@ -1858,43 +2066,17 @@ function create_pitch($data,$conn) {
     $weekend_close = $data['weekend_close_time'];
     $holidayPeakrate = $data['holiday_peak_rate'];
     $holidayOffPeakRate = $data['holiday_offpeak_rate'];
-    $peak_start = $data['peak_start'];
-    $peak_end = $data['peak_end'];
+    $peak_start = $data['off_peak_start'];
+    $peak_end = $data['off_peak_end'];
     $peak_rate = $data['peak_rate'];
     $offpeak_rate = $data['off_peak_rate'];
     $weekPeakRate = $data['weekend_peak_rate'];
     $weekOffPeakRate = $data['weekend_offPeak_rate'];
+    $taglines =$data['tagValues'];
    
 
     $image_path = null;
-    // Handle image if uploaded
- /*    if (isset($_FILES['dp_image']) && $_FILES['dp_image']['error'] === UPLOAD_ERR_OK) {
-  // Ensure upload folder exists
-  if (!file_exists($upload_folder)) {
-    mkdir($upload_folder, 0755, true);
-}
-        $tmp_name = $_FILES['dp_image']['tmp_name'];
-        $original_name = basename($_FILES['dp_image']['name']);
-        $file_type = mime_content_type($tmp_name);
-
-        if (strpos($file_type, 'image') === 0) {
-            $unique_name = time() . '_' . $original_name;
-            $server_path = $upload_folder . $unique_name;
-            $public_url = $upload_url_base . $unique_name;
-
-            if (move_uploaded_file($tmp_name, $server_path)) {
-                $image_path = $public_url;
-            } else {
-                echo "<div class='alert alert-danger'>Failed to upload image.</div>";
-                return;
-            }
-        } else {
-            echo "<div class='alert alert-danger'>Only image files are allowed.</div>";
-            return;
-        }
-    } */
-
-// Get base64 image data
+    
 $base64Image = $_POST['cropped_image_data'] ?? '';
 if (!$base64Image) {
     exit("No image data received.");
@@ -1929,13 +2111,13 @@ if (file_put_contents($server_path, $imageBase64)) {
 
  // Build SQL query
     if ($image_path)
-     {$stmt = $conn->prepare("INSERT INTO pitch (pitch_name, opening_time, closing_time, court_id,image_path,WeekEnd_opentime,WeekEnd_closetime,stadium_id,gametype_id) VALUES (?, ?, ?, ?, ?,?,?,?,?)");
-        $stmt->bind_param("sssisssii", $pitch_name, $opening_time, $closing_time, $court_id,$image_path,$weekend_open,$weekend_close,$stadium_id,$game_id);
+     {$stmt = $conn->prepare("INSERT INTO pitch (pitch_name, opening_time, closing_time, court_id,image_path,WeekEnd_opentime,WeekEnd_closetime,stadium_id,gametype_id,Amenities) VALUES (?,?, ?, ?, ?, ?,?,?,?,?)");
+        $stmt->bind_param("sssisssiis", $pitch_name, $opening_time, $closing_time, $court_id,$image_path,$weekend_open,$weekend_close,$stadium_id,$game_id,$taglines);
         
     } else {
    
-    $stmt = $conn->prepare("INSERT INTO pitch (pitch_name, opening_time, closing_time, court_id,WeekEnd_opentime,WeekEnd_closetime,stadium_id,gametype_id) VALUES (?, ?, ?, ?,?,?,?,?)");
-    $stmt->bind_param("sssissii", $pitch_name, $opening_time, $closing_time, $court_id,$weekend_open,$weekend_close,$stadium_id,$game_id);
+    $stmt = $conn->prepare("INSERT INTO pitch (pitch_name, opening_time, closing_time, court_id,WeekEnd_opentime,WeekEnd_closetime,stadium_id,gametype_id,Amenities) VALUES (?,?, ?, ?, ?,?,?,?,?)");
+    $stmt->bind_param("sssissiis", $pitch_name, $opening_time, $closing_time, $court_id,$weekend_open,$weekend_close,$stadium_id,$game_id,$taglines);
     }
     if ($stmt->execute()) {
         $pitch_id = $conn->insert_id;
@@ -2045,8 +2227,8 @@ if (file_put_contents($server_path, $imageBase64)) {
 
 
 function update_pitch($data, $conn) {
-    $upload_folder = get_template_directory() . '/uploads/';
-    $upload_url_base = get_template_directory_uri() . '/uploads/';
+    $upload_folder = __DIR__ . 'uploads/';
+    $upload_url_base = 'uploads/';
     
     $pitch_id = $conn->real_escape_string($data['pitch_id']);
     $pitch_name = $conn->real_escape_string($data['pitch_name']);
