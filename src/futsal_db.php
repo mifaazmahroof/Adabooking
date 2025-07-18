@@ -4,13 +4,14 @@ $username = "root";
 $password = "";
 $dbname = "gpedfqte_WP3RP";*/
 
-$servername = "yamabiko.proxy.rlwy.net:13665";
+$servername = "yamabiko.proxy.rlwy.net";
 $username = "root";
+$port ="13665";
 $password = "elJbKEDUyyGYKVVHqkrcKZNNynrFtGHw";
 $dbname = "gpedfqte_WP3RP";
 
 // Create Database Connection
-$conn = new mysqli($servername, $username, $password, $dbname);
+$conn = new mysqli($servername, $username, $password, $dbname,$port);
 
 // Check connection
 if ($conn->connect_error) {
